@@ -44,7 +44,7 @@ class SpeechDataset(Dataset):
         given sampling rate, resample the audio. Return the waveform as a 1D tensor.
         If the audio is stereo, returns the mean across channels.
         """
-
+        
         audio, sr = torchaudio.load(audio_path, normalize=True)
         if sr != self.sample_rate:
             if self.resampler is None:

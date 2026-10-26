@@ -90,7 +90,7 @@ class Converter:
         # otherwise compute the WavLM features and concatenate them for each speaker
         LOGGER.info("Extracting target features")
         wavlm = setup_module(config.wavlm, device)
-        dl = eval_dataloader(config.wavlm_dl, target_df, wavlm, max_ratio=0.5)
+        dl = eval_dataloader(config.wavlm_dl, target_df, wavlm) #max_ratio=0.5)
         for _, batch, data in tqdm(dl):
             feats, feat_lengths = wavlm.run(batch).values()
             vc_feats, phone_feats = feats

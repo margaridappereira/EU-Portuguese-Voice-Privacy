@@ -4,7 +4,7 @@ batch_size: 2
 featex: # feature extraction module; components receive the output of torchaudio.load as input.
   wavlm:
     cls: spkanon_eval.featex.wavlm.wrapper.WavlmWrapper
-    ckpt: checkpoints/WavLM-Large.pt
+    ckpt: private_knnvc/checkpoints/WavLM-Large.pt
     layer:
       - 6
       - 24
@@ -12,11 +12,11 @@ featex: # feature extraction module; components receive the output of torchaudio
 
 featproc: # feature processing module
   knnvc:
-    cls: private_knnvc.converter.Converter
+    cls: spkanon_models.knnvc_private.converter.Converter
     converter_params: ${converter_params}
     wavlm: ${featex.wavlm}
     wavlm_dl: ${data.config}
-    exp_folder: ${exp_folder}
+    exp_folder: ./ # ${exp_folder}
     input:
       feats: feats
       n_feats: n_feats

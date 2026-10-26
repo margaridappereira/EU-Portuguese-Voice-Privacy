@@ -12,9 +12,9 @@ from torch.nn.utils.rnn import pad_sequence
 from tqdm import tqdm
 from sklearn.cluster import KMeans
 
-from train_utils import get_phones
-from wavlm_loader import load_wavlm
-from dataset import SpeechDataset
+from .train_utils import get_phones
+from .wavlm_loader import load_wavlm
+from .dataset import SpeechDataset
 
 
 def dump_spk_feats(spk: str, feats: list[list[Tensor]], dump_dir: str):
@@ -36,7 +36,7 @@ def dump_spk_feats(spk: str, feats: list[list[Tensor]], dump_dir: str):
     with open(spk_file, "a") as f:
         f.write(f"{spk}\n")
 
-    for n_clusters in [32, 16, 8, 2]:
+    for n_clusters in [16]:
         clustered_feats = list()
         for phone_idx, phone_feats in enumerate(feats):
             if phone_feats.shape[0] == 0:
@@ -60,13 +60,14 @@ def dump_spk_feats(spk: str, feats: list[list[Tensor]], dump_dir: str):
 
 if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    data_dir = "/ds/audio/LibriSpeech/train-clean-100"
+    data_dir = "/cfs/home/u035986/pt-audio_wav_16k/pt-extended_mls/uin_mjp" #"/ds/audio/LibriSpeech/train-clean-100"
     dump_dir = "./logs/ls-targets-truephones"
 
     phone_map, pad_idx, phones_true = get_phones()
     wavlm = load_wavlm(device)
 
-    dataset = SpeechDataset(data_dir, 16000, ".flac")
+    dataset = SpeechDataset(data_dir, 16000, ".wav")
+    dataset.audiofiles = dataset.audiofiles[:16] # at least 5 min of audio for target
     dl = DataLoader(
         dataset,
         batch_size=8,
@@ -92,7 +93,7 @@ if __name__ == "__main__":
                 print(f"{fname} not in phones_true")
                 continue
 
-            spk = fname.split("-")[0]
+            spk = fname.split("_")[0]
             if spk != current_spk:
                 if len(spk_feats[0]) > 0:
                     dump_spk_feats(spk, spk_feats, dump_dir)

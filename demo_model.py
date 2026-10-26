@@ -7,9 +7,12 @@ from torch.nn.utils.rnn import pad_sequence
 from tqdm import tqdm
 from sklearn.cluster import KMeans
 
-from private_knnvc.conv_decoder import load_model as load_conv_decoder
+#from private_knnvc.conv_decoder import load_model as load_conv_decoder
+from train_predictors.conv_decoder import load_model as load_conv_decoder_f
+#from train_predictors.conv_decoder_og import load_model as load_conv_decoder_d
 from wavlm.wavlm_model import WavLM, WavLMConfig
 from hifigan import Generator, AttrDict
+#from vocoders import BigVGANVocoder
 
 
 PHONE_DECODER_CKPT = "./checkpoints/phone_decoder.pt"
@@ -18,6 +21,8 @@ WAVLM_CKPT = "./checkpoints/WavLM-Large.pt"
 HIFIGAN_CKPT = "./checkpoints/knnvc/hifigan.pt"
 HIFIGAN_CFG = "./checkpoints/knnvc/hifigan.json"
 
+VOCODER_CKPT = "/cfs/projects/funded/privadia/bvg_model/bvg_697k.pth"
+VOCODER_CFG = "/cfs/projects/funded/privadia/bvg_model/bvg_config.json"
 
 class Converter:
     def __init__(self, device: str, dur_w: float, n_phone_clusters: int) -> None:
@@ -41,22 +46,27 @@ class Converter:
         self.hifigan.to(device)
         self.hifigan.eval()
         self.hifigan.remove_weight_norm()
+        #self.hifigan = BigVGANVocoder(device='cpu', model_id=None, checkpoint_path=VOCODER_CKPT, config_path=VOCODER_CFG, use_cuda_kernel=False)
+        #self.hifigan.eval()
 
         # load the phone and duration predictors
         self.phone_lexicon = (
-            open("./private_knnvc/phone_lexicon.txt", "r").read().splitlines()
+            #open("./private_knnvc/phone_lexicon.txt", "r").read().splitlines()
+            [line.split()[0] for line in open("./files/phones.sym", "r").read().splitlines()]
         )
         self.dur_w = dur_w
         self.n_phone_clusters = n_phone_clusters
-        self.phone_predictor = load_conv_decoder(PHONE_DECODER_CKPT, device)
-        self.duration_predictor = load_conv_decoder(DURATION_DECODER_CKPT, device)
+        self.phone_predictor = load_conv_decoder_f(PHONE_DECODER_CKPT, device)
+        self.duration_predictor = load_conv_decoder_f(DURATION_DECODER_CKPT, device)
 
         # load the WavLM features of the targets
         self.target_feats = list()
-        target_feats_dir = "./target_feats"
-        for spk_idx in range(len(os.listdir(target_feats_dir))):
+        target_feats_dir = "./target_feats" 
+        #import pdb;pdb.set_trace()
+        self.target_files = sorted(os.listdir(target_feats_dir))
+        for spk_idx in range(len(self.target_files)):
             self.target_feats.append(
-                torch.load(os.path.join(target_feats_dir, f"{spk_idx}.pt"))
+                torch.load(os.path.join(target_feats_dir, f"{self.target_files[spk_idx]}"))
             )
 
         # cluster the target features if needed
@@ -65,6 +75,7 @@ class Converter:
                 range(len(self.target_feats)), desc="Clustering the target feats"
             ):
                 for phone, feats in enumerate(self.target_feats[spk_idx]):
+                    #pdb.set_trace()
                     if feats.nelement() == 0:
                         self.target_feats[spk_idx][phone] = torch.zeros(
                             (self.n_phone_clusters, 1024)
@@ -88,7 +99,7 @@ class Converter:
                 )
 
     @torch.inference_mode()
-    def run(self, audio: Tensor, target_idx: int) -> str:
+    def run(self, audio: Tensor, target_idx: str) -> str:
         """
         Selects the target speakers for the given batch if needed and converts the batch
         to those targets.
@@ -97,6 +108,8 @@ class Converter:
             batch: a list with a tensor comprising spectrograms in first position.
         """
         # get the features, source and target speakers
+        #import pdb; pdb.set_trace()
+
         with torch.no_grad():
             wavlm_layers = [6, 24]
             last_feats, all_feats = self.wavlm.extract_features(
@@ -110,7 +123,8 @@ class Converter:
             src_feats = torch.stack(src_feats)
 
         # anonymize source features and synthesize them
-        tgt_feats = self.target_feats[target_idx]
+        num_idx = self.target_files.index(target_idx)
+        tgt_feats = self.target_feats[num_idx]
         converted_feats = self.convert_vecs(
             src_feats, [src_feats.shape[2]], [tgt_feats]
         )[0]
@@ -143,6 +157,7 @@ class Converter:
 
         phone_lens = torch.tensor([len(p) for p in phones], device=self.device)
         phones = pad_sequence(phones, batch_first=True).to(self.device)
+        #import pdb; pdb.set_trace()
         phone_durations = pad_sequence(phone_durations, batch_first=True).to(
             self.device
         )

@@ -17,10 +17,10 @@ from torch.nn.functional import mse_loss
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
-from conv_decoder import ConvDecoder
+from .conv_decoder import ConvDecoder
 
 
-N_PHONES = 41
+N_PHONES = 45
 
 
 class Trainer:
@@ -28,6 +28,7 @@ class Trainer:
 
         self.device = "cpu"
         if torch.cuda.is_available():
+            print('using cuda')
             self.device = torch.device("cuda")
         elif torch.mps.is_available():
             self.device = torch.device("mps")
@@ -56,7 +57,8 @@ class Trainer:
             except ValueError:
                 data[-1] = torch.tensor(data[-1], dtype=torch.float32)
                 data.append([])
-        data = pad_sequence(data[:-1], batch_first=True).to(self.device)
+        #import pdb; pdb.set_trace()
+        data = pad_sequence(data[:-1], batch_first=True, padding_value=45).to(self.device)
         # ! TODO: use pad_idx instead of 0? It's part of the phone predictor as well
 
         # split the data into train, val and test sets and create the dataloader
@@ -70,7 +72,12 @@ class Trainer:
 
         # load the model
         self.model = ConvDecoder(emb_dim=N_PHONES).to(self.device)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-4)
+
+        #self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+        #        self.optimizer,
+        #        T_0=n_tr * 70,
+        #        eta_min=5e-5)
 
         # train the model
         best_val_loss = float("inf")
@@ -100,18 +107,31 @@ class Trainer:
             batch_size=self.batch_size,
             shuffle=True if split == "train" else False,
         )
+
         total_loss = 0
         for batch in tqdm(dl, desc=split):
             batch = batch.to(self.device)
             phones, durations = batch[:, :, 0], batch[:, :, 1]
-            pred_durations = self.model(phones.to(torch.int32))
-            mask = phones != 0
-            loss = mse_loss(pred_durations[mask], durations[mask])
+            phones_for_model = phones.clone()
+            phones_for_model[phones == 45] = 0
+            #import pdb; pdb.set_trace()
+            pred_durations = self.model(phones_for_model.to(torch.int32))
+            mask = (phones != 45)#0
+
+            log_pred = torch.log1p(pred_durations[mask].float())
+            log_true = torch.log1p(durations[mask].float())
+            #weights_loss = 1.0 / torch.sqrt(durations[mask] + 1)
+
+            #loss = mse_loss(pred_durations[mask], durations[mask])
+            loss = torch.mean(torch.abs(log_pred - log_true))
+            #loss = (weights_loss * (log_pred - log_true) ** 2).mean()
+            #exp_pred = torch.exp(pred_durations.float())-1
 
             if split == "train":
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
+                #self.scheduler.step()
             total_loss += loss.item()
 
             if dump_to:
@@ -120,9 +140,10 @@ class Trainer:
                         for phone_idx, dur_true, dur_pred in zip(
                             phones[sample_idx],
                             durations[sample_idx],
+                            #exp_pred[sample_idx]
                             pred_durations[sample_idx],
                         ):
-                            if phone_idx != 0:
+                            if phone_idx != 45:# 0:
                                 f.write(
                                     f"{phone_idx.item()} {dur_true.item()} {dur_pred.item()} \n"
                                 )
@@ -141,10 +162,10 @@ if __name__ == "__main__":
     ap.add_argument(
         "datafile", type=str, help="Path to the extracted phone durations file."
     )
-    ap.add_argument("--bs", type=int, default=512, help="Batch size.")
+    ap.add_argument("--bs", type=int, default=256, help="Batch size.")
     ap.add_argument("--seed", type=int, default=42, help="Random seed.")
     ap.add_argument(
-        "--max_epochs", type=int, default=100, help="Maximum number of epochs."
+        "--max_epochs", type=int, default=160, help="Maximum number of epochs."
     )
     args = ap.parse_args()
 

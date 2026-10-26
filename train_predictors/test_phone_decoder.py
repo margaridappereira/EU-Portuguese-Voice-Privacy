@@ -14,20 +14,32 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 import editdistance
 
-from conv_decoder import load_model as load_conv_decoder
-from wavlm_loader import load_wavlm
-from train_utils import get_phones, get_split_datasets
+#from .trans_decoder import load_transformer_model
+from .conv_decoder import load_model as load_conv_decoder
+from .wavlm_loader import load_wavlm
+from .train_utils import get_phones, get_split_datasets
 
 
 def test(exp_folder: str):
-
+    
     device = "cpu"
     if torch.cuda.is_available():
         device = "cuda"
     elif torch.mps.is_available():
         device = "mps"
+    
 
     phone_map, pad_idx, phones_true = get_phones()
+    
+    phone_map_tup = []
+    for entry in phone_map:
+        parts =entry.split()
+        if len(parts)!=2:
+            continue
+
+        phone_label = parts[0]
+        p_idx = int(parts[1])
+        phone_map_tup.append((phone_label, p_idx))
 
     with open(os.path.join(exp_folder, "args.txt")) as f:
         lines = f.readlines()
@@ -45,6 +57,7 @@ def test(exp_folder: str):
 
     # load the models
     wavlm = load_wavlm(device)
+   # model = load_transformer_model(os.path.join(exp_folder, "best.pt"), device)
     model = load_conv_decoder(os.path.join(exp_folder, "best.pt"), device)
 
     writer = open(os.path.join(exp_folder, "test_results.txt"), "w")
@@ -70,11 +83,14 @@ def test(exp_folder: str):
             x = model(feats)
 
         for sample_idx in range(x.shape[0]):
-
+            
+            #import pdb;pdb.set_trace()
             # truncate labels if there are not as many predictions
+            #import pdb;
             fname = fnames[sample_idx]
             y_all = phones_true[fname].to(device)
             x_all = x[sample_idx].argmax(dim=-1)
+            #pdb.set_trace()
             x_all = x_all[x_all != pad_idx]
             if x_all.shape[0] < y_all.shape[0]:
                 y_all = y_all[: x_all.shape[0]]
@@ -90,6 +106,7 @@ def test(exp_folder: str):
                     fn[y_p] += 1
 
             # compute the accuracy and PER
+            #pdb.set_trace()
             n_correct_sample = (x_all == y_all).sum().item()
             acc = n_correct_sample / x_all.shape[0]
             n_correct += n_correct_sample
@@ -98,6 +115,8 @@ def test(exp_folder: str):
             x_unique = torch.unique_consecutive(x_all)
             y_unique = torch.unique_consecutive(y_all)
             n_edits_sample = editdistance.eval(y_unique, x_unique)
+            #n_correct_sample=(x_unique == y_unique).sum()
+            #acc = n_correct_samples / x_all.shape[0]
             per = n_edits_sample / len(y_unique)
             n_edits += n_edits_sample
             n_phones_unique += len(y_unique)
@@ -107,6 +126,8 @@ def test(exp_folder: str):
             p_len = 3
             for key, data in zip(["Y", "X"], [y_all, x_all]):
                 strings[key] = ""
+                #last_p = None
+
                 for p_idx in range(data.shape[0]):
                     p = phone_map[data[p_idx]]
                     if len(p) < p_len:
@@ -147,7 +168,8 @@ def test(exp_folder: str):
         f.write(f"n_phones_unique: {n_phones_unique}\n\n")
         f.write(f"Macro F1: {macro_f1:.4f}\n\n")
         f.write("Class F1 scores:\n")
-        for p_idx, phone in phone_map.items():
+        
+        for phone, p_idx in phone_map_tup:
             f.write(f"{phone}: {class_f1[p_idx]:.4f}\n")
 
 

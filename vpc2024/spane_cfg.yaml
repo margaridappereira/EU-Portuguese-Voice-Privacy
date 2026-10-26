@@ -12,7 +12,7 @@ data:
       - vpc2024/datafiles/IEMOCAP_test.txt
       - vpc2024/datafiles/ls-train-clean-360.txt
     targets:
-      - vpc2024/datafiles/libritts-train-other-500_subset.txt
+      - data/targets.txt
 
 seed: 0
 log_dir: logs/private_knnvc
@@ -27,13 +27,13 @@ inference:
     target: target
 
 target_selection_cfg: spkanon_eval/config/components/target_selection/random.yaml
-pipeline_cfg: spkanon_eval/private_knnvc/config.yaml # must clone spkanon_models repo first (see README)
+pipeline_cfg: spkanon_models/knnvc_private/config.yaml # must clone spkanon_models repo first (see README)
 enhance_audio: false
 converter_params:
   duration_prediction_weight: 0.7
-  n_phone_clusters: 16
+  n_phone_clusters: 0
   phone_predictor_cls: ConvDecoder
-  phone_predictor_ckpt: checkpoints/phone_decoder.pt
+  phone_predictor_ckpt: private_knnvc/checkpoints/phone_decoder.pt
   duration_predictor_cls: ConvDecoder
-  duration_predictor_ckpt: checkpoints/duration_decoder.pt
-  phone_lexicon: private_knnvc/phone_lexicon.txt
+  duration_predictor_ckpt: private_knnvc/checkpoints/duration_decoder.pt
+  phone_lexicon: private_knnvc/private_knnvc/phone_lexicon.txt
