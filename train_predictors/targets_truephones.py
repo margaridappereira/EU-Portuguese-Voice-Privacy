@@ -4,17 +4,27 @@ by their true phone labels.
 """
 
 import os
+import sys
+import argparse
 
 import torch
-from torch import Tensor
+from torch import Tensor, tensor
 from torch.utils.data import DataLoader
 from torch.nn.utils.rnn import pad_sequence
 from tqdm import tqdm
 from sklearn.cluster import KMeans
 
-from .train_utils import get_phones
-from .wavlm_loader import load_wavlm
-from .dataset import SpeechDataset
+try:
+    from .train_utils import get_phones
+    from .wavlm_loader import load_wavlm
+    from .dataset import SpeechDataset
+    from .conv_decoder import load_model as load_conv_decoder
+
+except ImportError:
+    from train_utils import get_phones
+    from wavlm_loader import load_wavlm
+    from dataset import SpeechDataset
+    from conv_decoder import load_model as load_conv_decoder
 
 
 def dump_spk_feats(spk: str, feats: list[list[Tensor]], dump_dir: str):
@@ -60,11 +70,38 @@ def dump_spk_feats(spk: str, feats: list[list[Tensor]], dump_dir: str):
 
 if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    data_dir = "/cfs/home/u035986/pt-audio_wav_16k/pt-extended_mls/uin_mjp" #"/ds/audio/LibriSpeech/train-clean-100"
+
+
+    parser = argparse.ArgumentParser(description="Create targets.")
+    parser.add_argument(
+        "--data_dir",
+        required=True,
+        help="Path to the audio data folder"
+    )
+
+    parser.add_argument(
+        "--opt",
+        required=False,           
+        default="1",      
+        help="Provide own ground truth? 1 - No 2 - Yes"
+    )
+
+    try:
+        args = parser.parse_args()
+        data_dir = args.data_dir
+        ground_truth = args.opt
+    except SystemExit:
+        print("\nWarning: Please add --data_dir <folder_name> to run this script correctly.", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"Creating target from data folder: {data_dir}")
+
+    #data_dir = "/ds/audio/LibriSpeech/train-clean-100"
     dump_dir = "./logs/ls-targets-truephones"
 
     phone_map, pad_idx, phones_true = get_phones()
     wavlm = load_wavlm(device)
+    phone_model = load_conv_decoder("./checkpoints/phone_decoder.pt", device)
 
     dataset = SpeechDataset(data_dir, 16000, ".wav")
     dataset.audiofiles = dataset.audiofiles[:16] # at least 5 min of audio for target
@@ -79,6 +116,7 @@ if __name__ == "__main__":
         ],
     )
 
+
     current_spk = ""
     spk_feats = [list() for _ in range(len(phone_map))]
     for batch_idx, batch in tqdm(enumerate(dl), total=len(dl)):
@@ -86,22 +124,43 @@ if __name__ == "__main__":
         audios = audios.to(device)
         with torch.no_grad():
             feats = wavlm.extract_features(audios, output_layer=6)[0].to("cpu")
+            feats2 = wavlm.extract_features(audios)[0].to(device)
 
-        for fname, utt_feats in zip(fnames, feats):
+        for fname, utt_feats, utt_feats2 in zip(fnames, feats, feats2):
             fname = os.path.splitext(os.path.basename(fname))[0]
-            if fname not in phones_true:
-                print(f"{fname} not in phones_true")
-                continue
 
+            if ground_truth == "2":
+                if fname not in phones_true:
+                    #print("Creating phoneme transcript")
+                    print(f"{fname} not in phones_true")
+                    continue
+
+            else:
+                phones_true={}
+                with torch.no_grad():
+                    utt_feats2 =  utt_feats2.unsqueeze(0)
+                    x = phone_model(utt_feats2)
+                    
+                    x_all = x.argmax(dim=-1).squeeze(0).cpu() 
+                    #pred_string = " ".join([str(t) for t in x_all.tolist() if t < len(phone_map)])
+                    #print(f"File {fname} -> Phonemes: {pred_string}")
+                    print(x_all.tolist())
+                    phones_true[fname] = tensor(
+                            [int(p) for p_idx, p in enumerate(x_all.tolist())]
+                    )
+            
             spk = fname.split("_")[0]
             if spk != current_spk:
                 if len(spk_feats[0]) > 0:
                     dump_spk_feats(spk, spk_feats, dump_dir)
                 current_spk = spk
                 spk_feats = [list() for _ in range(len(phone_map))]
-
+            
             for phone, feat in zip(phones_true[fname], utt_feats):
                 spk_feats[phone.item()].append(feat)
+                
+                #pred_string = " ".join([str(phone_map[t]) for t in x_all.tolist() if t < len(phone_map)])
+                #print(f"Predicted Phonemes (X) for {fname}:", pred_string)
 
     if len(spk_feats[0]) > 0:
         dump_spk_feats(spk, spk_feats, dump_dir)
