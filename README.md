@@ -28,6 +28,7 @@ pip install -r requirements.txt
 ```
 
 ---
+For the following procedures make sure all your audio files have a 16kHz sampling rate.
 
 ## Creating Targets
 
