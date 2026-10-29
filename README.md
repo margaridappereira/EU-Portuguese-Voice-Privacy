@@ -116,3 +116,32 @@ python demo.py --help
 ├── demo.py               # anonymization entry point
 └── requirements.txt
 ```
+
+## Ethical Disclaimer 
+We release this technology to support future research on voice anonymization, and we expect that most of its applications will be beneficial.
+
+##  Acknowledgements
+
+This project builds on **Private kNN-VC** and **kNN-VC**. The phone predictor, WavLM feature pipeline, and kNN-based conversion follow their approach. Please cite their work if you use this code:
+
+- Official repository: [carlosfranzreb/private_knnvc](https://github.com/carlosfranzreb/private_knnvc)
+
+```bibtex
+@inproceedings{franzreb2025private,
+  title     = {Private kNN-VC: Interpretable Anonymization of Converted Speech},
+  author    = {Franzreb, Carlos and Das, Arnab and Polzehl, Tim and M{\"o}ller, Sebastian},
+  booktitle = {Interspeech 2025},
+  pages     = {3224--3228},
+  year      = {2025},
+  publisher = {ISCA}
+}
+
+@inproceedings{baas2023knnvc,
+  title     = {Voice Conversion With Just Nearest Neighbors},
+  author    = {Baas, Matthew and van Niekerk, Benjamin and Kamper, Herman},
+  booktitle = {Interspeech 2023},
+  year      = {2023}
+}
+```
+This work was developed in collaboration with INESC-ID as a Master Thesis project. 
+A special thank you to Isabel Trancoso, Francisco Teixeira for advising the whole process
