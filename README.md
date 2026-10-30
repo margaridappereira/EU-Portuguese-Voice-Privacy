@@ -41,7 +41,7 @@ You have two options for building target speaker features:
 
 ### Option 1: Audio + aligned phonemes
 
-Place your aligned data in the `files/` folder as `duplicated_phoneme_transcript.pt`.
+Place your aligned data in the `files/` folder as `duplicated_phoneme_transcript.txt`.
 
 Each line has the format:
 
