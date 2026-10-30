@@ -5,7 +5,7 @@ from wavlm.wavlm_model import WavLM, WavLMConfig
 
 def load_wavlm(device: str):
     ckpt = torch.load(
-        "/cfs/home/u035986/spkanon/spkanon_eval/private_knnvc/checkpoints/WavLM-Large.pt",
+        "./checkpoints/WavLM-Large.pt",
         map_location=device,
         weights_only=False,
     )
